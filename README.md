@@ -5,7 +5,7 @@
 ```
 import "github.com/dysms-go"
 
-func	main() {
+func main() {
 	dysms.AccessKeyId = "Your AccessKeyId"
 	dysms.AccessSecret = "Your AccessSecret"
 	dysms.SendWithTemplate("TemplateCode", "TemplateParam")
