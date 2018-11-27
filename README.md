@@ -41,7 +41,6 @@ func	main() {
 import "github.com/dysms-go"
 
 func	main() {
-	sender := dysms.NewSmsSender()
-	sender.RawSend("AccessKeyId", "AccessSecret", "SignName", "TemplateCode", "PhoneNumbers", "TemplateParam")
+	dysms.RawSend("AccessKeyId", "AccessSecret", "SignName", "TemplateCode", "PhoneNumbers", "TemplateParam")
 }
 ```
