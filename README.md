@@ -1,13 +1,47 @@
 # 阿里云短信 dysms api 的go实现
 
-## 示例
+## 示例1
 
 ```
 import "github.com/dysms-go"
 
 func main() {
-	dysms.AccessKeyId = "Your AccessKeyId"
-	dysms.AccessSecret = "Your AccessSecret"
-	dysms.SendWithTemplate("TemplateCode", "TemplateParam")
+	dysms.Set("AccessKeyId", "AccessSecret", "SignName", "TemplateCode")
+	dysms.Send("PhoneNumbers", "TemplateParam")
+}
+```
+
+## 示例2
+
+```
+import "github.com/dysms-go"
+
+func main() {
+	sender := dysms.GetSmsSender("Mysender")
+	sender.Set("AccessKeyId", "AccessSecret", "SignName", "TemplateCode")
+	sender.Send("PhoneNumbers", "TemplateParam")
+}
+```
+
+## 示例3
+
+```
+import "github.com/dysms-go"
+
+func	main() {
+	sender := dysms.NewSmsSender()
+	sender.Set("AccessKeyId", "AccessSecret", "SignName", "TemplateCode")
+	sender.Send("PhoneNumbers", "TemplateParam")
+}
+```
+
+### 示例4
+
+```
+import "github.com/dysms-go"
+
+func	main() {
+	sender := dysms.NewSmsSender()
+	sender.RawSend("AccessKeyId", "AccessSecret", "SignName", "TemplateCode", "PhoneNumbers", "TemplateParam")
 }
 ```
