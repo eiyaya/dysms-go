@@ -2,12 +2,11 @@ package dysms
 
 import (
 	"time"
-	// "strings"
+	"strings"
 	"errors"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
-	"net/url"
 	"net/http"
 
 	"github.com/satori/go.uuid"
@@ -27,40 +26,36 @@ var (
 	// 用于发送http请求的Client
 	Client = &http.Client{}
 	// 记录所有创建的SmsSender
-	smsSenders = make(map[string]*smsSender)
+	smsSenders = make(map[string]*SmsSender)
 	// 默认的SmsSender
-	Default *smsSender
+	Default *SmsSender
 )
 
 // 初始化默认 SmsSender
 func init() {
-	Default, _ = &smsSender{}
+	Default = &SmsSender{}
 	smsSenders["default"] = Default
 }
 
 // 根据给出的名称获取SmsSender
-func GetSmsSender(param ...string) (smsSender *smsSender) {
-	// 如果没有参数，返回默认smsSender，
-	// 如果有参数，根据name[0] 返回smsSender
-	if len(param) <= 0 {
-		return Default
-	} else {
-		name := param[0]
-		// 如果smsSenders中保存了以name为键的SmsSender,
-		// 返回对应的SmsSender,
-		// 如果没有，创建一个新的SmsSender并返回
-		_, ok := smsSenders[name]
-		if !ok {
-			NewSmsSender(name)
+// 可选参数 AccessKeyId AccessSecret SignName TemplateCode
+func GetSmsSender(name string, param ...string) (smsSender *SmsSender) {
+	// 如果smsSenders中保存了以name为键的SmsSender,
+	// 返回对应的SmsSender,
+	// 如果没有，创建一个新的SmsSender并返回
+	_, ok := smsSenders[name]
+	if !ok {
+		sender := NewSmsSender()
+		if len(param) == 3 {
+
 		}
-		return smsSenders[name]
+		smsSenders[name] = sender
 	}
+	return smsSenders[name]
 }
 
-
-
 // 实现短信请求的组装和发送
-type smsSender struct {
+type SmsSender struct {
 	// AccessKeyId 和 AccessSecret
 	AccessKeyId string
 	AccessSecret string
@@ -68,61 +63,76 @@ type smsSender struct {
 	SignName string
 	// 模板码
 	TemplateCode string
-	// 执行签名的函数
-	SignatureHandler func(values url.Values, accessSecret string) (rstValues url.Values, sign string)
+	Values Values
+	GetSignatureNonce func() string
 }
 
-func (s *smsSender) timestamp() string {
+// 创建SmsSender
+func NewSmsSender() *SmsSender {
+	s := &SmsSender{}
+	s.Values.Add("Action", "SendSms")
+	s.Values.Add("Version", "2017-05-25")
+	s.Values.Add("RegionId", "cn-hangzhou")
+	return s
+}
+
+func (s *SmsSender) timestamp() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05Z")
 }
 
-// 根据给出的 phoneNumbers templateParam发送短信
-func (s *smsSender) Send(phoneNumbers, templateParam string) (successed bool, err error) {
-	return RawSend(phoneNumbers, s.SignName, s.TemplateCode, templateParam)
+// 设置 SmsSender 的参数
+func (s *SmsSender) Set(accessKeyId, accessSecret, signName, templateCode string) {
+	s.AccessKeyId = accessKeyId
+	s.AccessSecret = accessSecret
+	s.SignName = signName
+	s.TemplateCode = templateCode
 }
 
-// 按照给出的 所有参数 发送短信
-func RawSend(accessKeyId, accessSecret, phoneNumbers, signName, templateCode, templateParam string) (requestId, code, message, bizId string) {
-	values := url.Values{}
-	// 权限ID
-	values.Add("AccessKeyId", accessKeyId)
-	// 电话号码
-	values.Add("PhoneNumbers", phoneNumbers)
-	// 签名
-	values.Add("SignName", signName)
-	// 模板码
-	values.Add("TemplateCode", templateCode)
-	// 模板数据
-	values.Add("TemplateParam", templateParam)
-	// 时间戳
-	values.Add("Timestamp", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
-	// 行为
-	values.Add("Action", "SendSms")
-	values.Add("Version", "2017-05-25")
-	values.Add("RegionId", "cn-hangzhou")
-	signedArgs = Signature(values)
-	// 发送请求
-	resp, err := Client.Get(Path+"?"+signedArgs)
-	// 处理结果
-	return parseResp(resp)
+// 根据给出的 phoneNumbers templateParam发送短信
+func (s *SmsSender) Send(phoneNumbers, templateParam string, outId ...string) (successed bool, err error) {
+	s.Values.Add("AccessKeyId", s.AccessKeyId)
+	s.Values.Add("Timestamp", s.timestamp())
+	// 业务参数
+	s.Values.Add("SignName", s.SignName)
+	s.Values.Add("TemplateCode", s.TemplateCode)
+	s.Values.Add("PhoneNumbers", phoneNumbers)
+	s.Values.Add("TemplateCode", s.TemplateCode)
+	s.Values.Add("TemplateParam", templateParam)
+	if (len(outId) > 0) {
+		s.Values.Add("OutId", outId[0])
+	} else {
+		s.Values.Del("OutId")
+	}
+	queryString := s.signature()
+	Client.Get(Path+"?"+queryString)
+	// TODO: 结果检查
+	return
 }
 
 // 使用给出的 accessSecret 进行签名
-func Signature(values url.Values, accessSecret string) (signedArgs string) {
+func (s *SmsSender) signature() (queryString string) {
 	// 签名方法
-	values.Add("SignatureMethod", "HMAC-SHA1")
+	s.Values.Add("SignatureMethod", "HMAC-SHA1")
 	// 签名版本
-	values.Add("SignatureVersion", "1.0")
+	s.Values.Add("SignatureVersion", "1.0")
 	// 随机数
-	values.Add("SignatureNonce", uuid.Must(uuid.NewV4()).String())
+	// s.Values.Add("SignatureNonce", s.GetSignatureNonce())
+	s.Values.Add("SignatureNonce", uuid.Must(uuid.NewV4()).String())
 	// 去除签名字段
-	values.Del("Signature")
-	urlEncoded := values.Encode()
-	stringToSign := "GET"+"&"+specialUrlEncode("/")+"&"+specialUrlEncode(urlEncoded)
-	h := hmac.New(sha1.New, []byte(accessSecret+"&"))
+	s.Values.Del("Signature")
+	sortedQueryString := s.Values.Encode()
+	var buf strings.Builder
+	buf.WriteString("GET")
+	buf.WriteString("&")
+	buf.WriteString(SpecialEncode("/"))
+	buf.WriteString("&")
+	buf.WriteString(SpecialEncode(sortedQueryString))
+	stringToSign := buf.String()
+	// 进行签名
+	h := hmac.New(sha1.New, []byte(s.AccessSecret+"&"))
 	h.Write([]byte(stringToSign))
-	signString := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	return values, signString
+	signedString := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	return "Signature="+signedString+"&"+sortedQueryString
 }
 
 // 解析返回值
